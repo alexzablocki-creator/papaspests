@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papa's Pest!</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            color: #F7F4ED;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 30px rgba(18, 59, 104, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #123B68;
+        }
+        canvas {
+            background: linear-gradient(to bottom, #87CEEB 0%, #a8e6cf 100%);
+            display: block;
+            cursor: crosshair;
+        }
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        .hud {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            font-size: 24px;
+            font-weight: bold;
+            color: #123B68;
+            text-shadow: 2px 2px 0px #F7F4ED;
+        }
+        .hidden { display: none !important; }
+        .screen {
+            background: rgba(18, 59, 104, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            pointer-events: auto;
+            border: 4px solid #F7F4ED;
+            max-width: 80%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .brand-image {
+            max-width: 100%;
+            height: auto;
+            max-height: 300px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 2px solid #F7F4ED;
+        }
+        button {
+            background: #F7F4ED;
+            color: #123B68;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+        }
+        button:hover {
+            background: #ffffff;
+            box-shadow: 0 0 10px rgba(247, 244, 237, 0.5);
+        }
+        button:active { transform: scale(0.95); }
+        h1 { margin: 0 0 10px 0; color: #F7F4ED; font-size: 48px; text-shadow: 2px 2px #000; }
+        p { font-size: 18px; margin: 5px 0; color: #F7F4ED; }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="uiLayer">
+        <!-- Heads Up Display -->
+        <div id="hud" class="hud hidden">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="rechargeDisplay">Recharge: 0/30</div>
+            <div id="timeDisplay">Battery: 60s</div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="screen">
+            <img src="1000095639_2.png" alt="Papa's Pest! Logo" class="brand-image">
+            <p>⚡ Tap the screen to swat bugs with your electrified racket.</p>
+            <p>🔋 You have 60 seconds of battery.</p>
+            <p>☀️ Swat 30 bugs to trigger Papa's Solar Panels for +20s!</p>
+            <button onclick="startGame()">PLAY NOW</button>
+        </div>
+
+        <!-- Bonus Screen Transition -->
+        <div id="bonusScreen" class="screen hidden">
+            <h1>BONUS ROUND!</h1>
+            <p>🐝 Use the mouse/touch to move Papa.</p>
+            <p>🏃‍♂️ Scare the wasps into the Bug Catcher!</p>
+            <p>⏳ You have 15 seconds.</p>
+            <button onclick="startBonusRound()">START BONUS</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="screen hidden">
+            <h1>GAME OVER</h1>
+            <p id="finalScore">Total Score: 0</p>
+            <button onclick="resetToStart()">PLAY AGAIN</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Game State variables
+    let gameState = 'START'; 
+    let score = 0;
+    let timer = 60;
+    let swatCount = 0; 
+    let bugs = [];
+    let particles = [];
+    let gameInterval;
+    
+    // Entities
+    let papa = { x: 400, y: 300, radius: 40 };
+    const catcher = { x: 400, y: 300, radius: 60 };
+
+    // Input Tracking
+    let mouseX = 0;
+    let mouseY = 0;
+
+    // Listeners
+    canvas.addEventListener('mousedown', handleSwat);
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.touches[0].clientX - rect.left;
+        mouseY = e.touches[0].clientY - rect.top;
+        handleSwat();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+        if(gameState === 'BONUS') {
+            papa.x = mouseX;
+            papa.y = mouseY;
+        }
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.touches[0].clientX - rect.left;
+        mouseY = e.touches[0].clientY - rect.top;
+        if(gameState === 'BONUS') {
+            papa.x = mouseX;
+            papa.y = mouseY;
+        }
+    });
+
+    class Bug {
+        constructor(isWasp = false) {
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height;
+            this.vx = (Math.random() - 0.5) * 6; // Slightly faster baseline speed
+            this.vy = (Math.random() - 0.5) * 6;
+            this.radius = 20;
+            this.isWasp = isWasp;
+            this.emoji = isWasp ? '🐝' : '🪰';
+        }
+
+        update() {
+            if (gameState === 'BONUS') {
+                let dx = this.x - papa.x;
+                let dy = this.y - papa.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 150) { 
+                    this.vx += (dx / dist) * 0.8;
+                    this.vy += (dy / dist) * 0.8;
+                }
+                
+                let speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if(speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+            }
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Proper bouncing
+            if (this.x < 0) { this.x = 0; this.vx *= -1; }
+            if (this.x > canvas.width) { this.x = canvas.width; this.vx *= -1; }
+            if (this.y < 0) { this.y = 0; this.vy *= -1; }
+            if (this.y > canvas.height) { this.y = canvas.height; this.vy *= -1; }
+        }
+
+        draw(ctx) {
+            ctx.font = "30px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.emoji, this.x, this.y);
+        }
+    }
+
+    class Particle {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = (Math.random() - 0.5) * 10;
+            this.life = 1.0;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.life -= 0.05;
+        }
+        draw(ctx) {
+            ctx.fillStyle = `rgba(247, 244, 237, ${this.life})`;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function spawnBugs(count, isWasp = false) {
+        for(let i=0; i<count; i++) {
+            bugs.push(new Bug(isWasp));
+        }
+    }
+
+    function createZap(x, y) {
+        for(let i=0; i<15; i++) {
+            particles.push(new Particle(x, y));
+        }
+    }
+
+    function handleSwat() {
+        if (gameState !== 'MAIN') return;
+        
+        createZap(mouseX, mouseY);
+
+        for (let i = bugs.length - 1; i >= 0; i--) {
+            let b = bugs[i];
+            let dx = mouseX - b.x;
+            let dy = mouseY - b.y;
+            // Generous hit box for easier swatting
+            if (Math.sqrt(dx*dx + dy*dy) < b.radius * 2.5) {
+                bugs.splice(i, 1);
+                score += 1;
+                swatCount += 1;
+                updateHUD();
+                
+                if (swatCount >= 30) {
+                    timer += 20;
+                    swatCount = 0;
+                    showRechargeEffect();
+                    updateHUD();
+                }
+            }
+        }
+    }
+
+    function showRechargeEffect() {
+        const ui = document.getElementById('uiLayer');
+        const msg = document.createElement('h2');
+        msg.innerText = "☀️ SOLAR RECHARGE! +20s ☀️";
+        msg.style.position = 'absolute';
+        msg.style.color = '#F7F4ED';
+        msg.style.textShadow = '2px 2px #123B68';
+        msg.style.animation = 'floatUp 2s forwards';
+        
+        if (!document.getElementById('animStyles')) {
+            const style = document.createElement('style');
+            style.id = 'animStyles';
+            style.innerHTML = `@keyframes floatUp { 0% { top: 50%; opacity: 1; transform: scale(1); } 100% { top: 30%; opacity: 0; transform: scale(1.5); } }`;
+            document.head.appendChild(style);
+        }
+        
+        ui.appendChild(msg);
+        setTimeout(() => msg.remove(), 2000);
+    }
+
+    function updateHUD() {
+        document.getElementById('scoreDisplay').innerText = `Score: ${score}`;
+        document.getElementById('rechargeDisplay').innerText = `Recharge: ${swatCount}/30`;
+        document.getElementById('timeDisplay').innerText = `Battery: ${timer}s`;
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        
+        score = 0;
+        timer = 60;
+        swatCount = 0;
+        bugs = [];
+        particles = [];
+        gameState = 'MAIN';
+        
+        // Spawn an initial massive wave of bugs
+        spawnBugs(25, false);
+        updateHUD();
+
+        if(gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(gameTimerTick, 1000);
+        
+        requestAnimationFrame(gameLoop);
+    }
+
+    function gameTimerTick() {
+        if (gameState === 'MAIN') {
+            timer--;
+            updateHUD();
+            
+            if (timer <= 0) {
+                gameState = 'BONUS_TRANSITION';
+                document.getElementById('bonusScreen').classList.remove('hidden');
+                document.getElementById('hud').classList.add('hidden');
+            }
+        } else if (gameState === 'BONUS') {
+            timer--;
+            document.getElementById('timeDisplay').innerText = `Time: ${timer}s`;
+            if (timer <= 0) {
+                endGame();
+            }
+        }
+    }
+
+    function startBonusRound() {
+        document.getElementById('bonusScreen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('rechargeDisplay').classList.add('hidden'); 
+        
+        gameState = 'BONUS';
+        timer = 15;
+        bugs = []; 
+        spawnBugs(20, true); 
+        updateHUD();
+    }
+
+    function endGame() {
+        gameState = 'OVER';
+        clearInterval(gameInterval);
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('rechargeDisplay').classList.remove('hidden'); 
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('finalScore').innerText = `Total Score: ${score}`;
+    }
+
+    function resetToStart() {
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        document.getElementById('startScreen').classList.remove('hidden');
+    }
+
+    function gameLoop(timestamp) {
+        if (gameState === 'OVER') return;
+
+        // Clear the canvas every frame to show movement
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameState === 'MAIN') {
+            // Guarantee there are always at least 25 bugs actively flying around
+            if (bugs.length < 25) {
+                spawnBugs(1, false);
+            }
+
+            bugs.forEach(bug => {
+                bug.update();
+                bug.draw(ctx);
+            });
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.update();
+                p.draw(ctx);
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        } 
+        else if (gameState === 'BONUS') {
+            ctx.fillStyle = "rgba(18, 59, 104, 0.4)";
+            ctx.beginPath();
+            ctx.arc(catcher.x, catcher.y, catcher.radius + 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.font = "80px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🏺", catcher.x, catcher.y);
+
+            ctx.font = "50px Arial";
+            ctx.fillText("👴", papa.x, papa.y);
+
+            for (let i = bugs.length - 1; i >= 0; i--) {
+                let b = bugs[i];
+                b.update();
+                b.draw(ctx);
+
+                let dx = b.x - catcher.x;
+                let dy = b.y - catcher.y;
+                if (Math.sqrt(dx*dx + dy*dy) < catcher.radius) {
+                    bugs.splice(i, 1);
+                    score += 3; 
+                    document.getElementById('scoreDisplay').innerText = `Score: ${score}`;
+                }
+            }
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+
+</body>
+</html>
