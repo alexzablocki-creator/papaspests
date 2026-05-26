@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papa's Pest!</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            color: #F7F4ED;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 0 30px rgba(18, 59, 104, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #123B68;
+            transition: box-shadow 0.3s ease; /* For penalty flashes */
+        }
+        canvas {
+            background: linear-gradient(to bottom, #87CEEB 0%, #a8e6cf 100%);
+            display: block;
+            cursor: crosshair;
+        }
+        #uiLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+        .hud {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+            font-size: 24px;
+            font-weight: bold;
+            color: #123B68;
+            text-shadow: 2px 2px 0px #F7F4ED;
+        }
+        .hidden { display: none !important; }
+        .screen {
+            background: rgba(18, 59, 104, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            pointer-events: auto;
+            border: 4px solid #F7F4ED;
+            max-width: 80%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .brand-image {
+            max-width: 100%;
+            height: auto;
+            max-height: 250px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 2px solid #F7F4ED;
+        }
+        button {
+            background: #F7F4ED;
+            color: #123B68;
+            border: none;
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+        }
+        button:hover { background: #ffffff; box-shadow: 0 0 10px rgba(247, 244, 237, 0.5); }
+        button:active { transform: scale(0.95); }
+        h1 { margin: 0 0 10px 0; color: #F7F4ED; font-size: 48px; text-shadow: 2px 2px #000; }
+        p { font-size: 18px; margin: 5px 0; color: #F7F4ED; }
+
+        /* Popup Penalty System */
+        #popupLayer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+        }
+        .penalty-img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            transform: scale(0);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .penalty-img.show-penalty {
+            transform: scale(1);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="popupLayer" class="hidden">
+        <img id="popupFly" src="fly.png" alt="Sneaky Cat Penalty" class="penalty-img hidden">
+        <img id="popupNana" src="nana.png" alt="Nana Penalty" class="penalty-img hidden">
+    </div>
+
+    <div id="uiLayer">
+        <div id="hud" class="hud hidden">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="rechargeDisplay">Recharge: 0/30</div>
+            <div id="timeDisplay">Battery: 60s</div>
+        </div>
+
+        <div id="startScreen" class="screen">
+            <img src="1000095639_2.png" alt="Papa's Pest! Logo" class="brand-image">
+            <p>⚡ Swat bugs with your electrified racket.</p>
+            <p>☀️ Swat 30 bugs for a +20s Solar Recharge!</p>
+            <p>🐈‍⬛ Watch out for the sneaky cat (-3 points)!</p>
+            <p>👵 Don't let Nana fall past you (-10 points)!</p>
+            <button onclick="startGame()">PLAY NOW</button>
+        </div>
+
+        <div id="bonusScreen" class="screen hidden">
+            <h1>BONUS ROUND!</h1>
+            <p>🐝 Use the mouse/touch to move Papa.</p>
+            <p>🏃‍♂️ Scare the wasps into the Bug Catcher!</p>
+            <p>⏳ You have 15 seconds.</p>
+            <button onclick="startBonusRound()">START BONUS</button>
+        </div>
+
+        <div id="gameOverScreen" class="screen hidden">
+            <h1>GAME OVER</h1>
+            <p id="finalScore">Total Score: 0</p>
+            <button onclick="resetToStart()">PLAY AGAIN</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Game State variables
+    let gameState = 'START'; 
+    let score = 0;
+    let timer = 60;
+    let swatCount = 0; 
+    let bugs = [];
+    let particles = [];
+    let specialEntities = [];
+    let gameInterval;
+    
+    // Spawning Timers
+    let catTimer = 0;
+    let nanaTimer = 0;
+
+    // Entities
+    let papa = { x: 400, y: 300, radius: 40 };
+    const catcher = { x: 400, y: 300, radius: 60 };
+
+    // Input Tracking
+    let mouseX = 0;
+    let mouseY = 0;
+
+    // Listeners
+    canvas.addEventListener('mousedown', (e) => {
+        updateMousePos(e);
+        handleSwat();
+    });
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        updateTouchPos(e);
+        handleSwat();
+    }, {passive: false});
+    canvas.addEventListener('mousemove', (e) => {
+        updateMousePos(e);
+        if(gameState === 'BONUS') { papa.x = mouseX; papa.y = mouseY; }
+    });
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        updateTouchPos(e);
+        if(gameState === 'BONUS') { papa.x = mouseX; papa.y = mouseY; }
+    }, {passive: false});
+
+    function updateMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+    }
+    function updateTouchPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.touches[0].clientX - rect.left;
+        mouseY = e.touches[0].clientY - rect.top;
+    }
+
+    // --- CLASSES ---
+
+    class SpecialEntity {
+        constructor(type) {
+            this.type = type; // 'CAT' or 'NANA'
+            this.radius = 40; // Slightly larger hitbox for easier swatting
+            
+            if (type === 'CAT') {
+                this.x = -50; 
+                this.y = Math.random() * (canvas.height - 150) + 75; // Random height
+                this.vx = 4 + Math.random() * 2; // Move Right
+                this.vy = 0;
+                this.emoji = '🐈‍⬛';
+            } else if (type === 'NANA') {
+                this.x = Math.random() * (canvas.width - 150) + 75; // Random width
+                this.y = -50; 
+                this.vx = 0;
+                this.vy = 3 + Math.random() * 2; // Move Down
+                this.emoji = '👵';
+            }
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+        }
+
+        draw(ctx) {
+            ctx.font = "50px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.emoji, this.x, this.y);
+        }
+    }
+
+    class Bug {
+        constructor(isWasp = false) {
+            this.x = Math.random() * canvas.width;
+            this.y = Math.random() * canvas.height;
+            this.vx = (Math.random() - 0.5) * 6;
+            this.vy = (Math.random() - 0.5) * 6;
+            this.radius = 20;
+            this.isWasp = isWasp;
+            this.emoji = isWasp ? '🐝' : '🪰';
+        }
+
+        update() {
+            if (gameState === 'BONUS') {
+                let dx = this.x - papa.x;
+                let dy = this.y - papa.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 150) { 
+                    this.vx += (dx / dist) * 0.8;
+                    this.vy += (dy / dist) * 0.8;
+                }
+                
+                let speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                if(speed > 8) {
+                    this.vx = (this.vx / speed) * 8;
+                    this.vy = (this.vy / speed) * 8;
+                }
+            }
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // Proper bouncing off walls
+            if (this.x < 0) { this.x = 0; this.vx *= -1; }
+            if (this.x > canvas.width) { this.x = canvas.width; this.vx *= -1; }
+            if (this.y < 0) { this.y = 0; this.vy *= -1; }
+            if (this.y > canvas.height) { this.y = canvas.height; this.vy *= -1; }
+        }
+
+        draw(ctx) {
+            ctx.font = "30px Arial";
+            ctx
