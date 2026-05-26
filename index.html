@@ -222,12 +222,12 @@
     class SpecialEntity {
         constructor(type) {
             this.type = type; 
-            this.radius = 45; // Larger hitbox for easier swatting
+            this.radius = 45; 
             
             if (type === 'CAT') {
                 this.x = -50; 
                 this.y = Math.random() * (canvas.height - 150) + 75; 
-                this.vx = 5 + Math.random() * 3; // Speedy cat
+                this.vx = 5 + Math.random() * 3; 
                 this.vy = 0;
                 this.emoji = '🐈‍⬛';
             } else if (type === 'NANA') {
@@ -245,7 +245,11 @@
         }
 
         draw(ctx) {
-            ctx.font = "60px Arial"; // Made entities slightly larger
+            // FIX: Resetting the canvas ink so emojis never inherit transparent particles!
+            ctx.globalAlpha = 1.0; 
+            ctx.fillStyle = '#000000';
+            
+            ctx.font = "60px Arial"; 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(this.emoji, this.x, this.y);
@@ -291,6 +295,10 @@
         }
 
         draw(ctx) {
+            // FIX: Resetting the canvas ink here too
+            ctx.globalAlpha = 1.0; 
+            ctx.fillStyle = '#000000';
+
             ctx.font = "30px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
@@ -312,7 +320,6 @@
             this.life -= 0.05;
         }
         draw(ctx) {
-            // FIXED: Prevent negative alpha crashing the render loop
             let alpha = Math.max(0, this.life); 
             ctx.fillStyle = `rgba(247, 244, 237, ${alpha})`;
             ctx.beginPath();
@@ -458,7 +465,6 @@
             catTimer++;
             nanaTimer++;
 
-            // Adjusted Spawn Timers for higher frequency
             if (catTimer >= 8) {
                 specialEntities.push(new SpecialEntity('CAT'));
                 catTimer = 0;
@@ -522,13 +528,11 @@
                 spawnBugs(25 - bugs.length, false);
             }
 
-            // Draw bugs first so they appear UNDER the special entities
             bugs.forEach(bug => {
                 bug.update();
                 bug.draw(ctx);
             });
 
-            // Update & Draw Special Entities
             for (let i = specialEntities.length - 1; i >= 0; i--) {
                 let entity = specialEntities[i];
                 entity.update();
