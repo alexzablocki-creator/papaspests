@@ -22,7 +22,7 @@
             border-radius: 10px;
             overflow: hidden;
             background-color: #123B68;
-            transition: box-shadow 0.3s ease; /* For penalty flashes */
+            transition: box-shadow 0.3s ease;
         }
         canvas {
             background: linear-gradient(to bottom, #87CEEB 0%, #a8e6cf 100%);
@@ -219,24 +219,22 @@
         mouseY = e.touches[0].clientY - rect.top;
     }
 
-    // --- CLASSES ---
-
     class SpecialEntity {
         constructor(type) {
-            this.type = type; // 'CAT' or 'NANA'
-            this.radius = 40; // Slightly larger hitbox for easier swatting
+            this.type = type; 
+            this.radius = 45; // Larger hitbox for easier swatting
             
             if (type === 'CAT') {
                 this.x = -50; 
-                this.y = Math.random() * (canvas.height - 150) + 75; // Random height
-                this.vx = 4 + Math.random() * 2; // Move Right
+                this.y = Math.random() * (canvas.height - 150) + 75; 
+                this.vx = 5 + Math.random() * 3; // Speedy cat
                 this.vy = 0;
                 this.emoji = '🐈‍⬛';
             } else if (type === 'NANA') {
-                this.x = Math.random() * (canvas.width - 150) + 75; // Random width
+                this.x = Math.random() * (canvas.width - 150) + 75; 
                 this.y = -50; 
                 this.vx = 0;
-                this.vy = 3 + Math.random() * 2; // Move Down
+                this.vy = 3 + Math.random() * 2; 
                 this.emoji = '👵';
             }
         }
@@ -247,7 +245,7 @@
         }
 
         draw(ctx) {
-            ctx.font = "50px Arial";
+            ctx.font = "60px Arial"; // Made entities slightly larger
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(this.emoji, this.x, this.y);
@@ -286,7 +284,6 @@
             this.x += this.vx;
             this.y += this.vy;
 
-            // Proper bouncing off walls
             if (this.x < 0) { this.x = 0; this.vx *= -1; }
             if (this.x > canvas.width) { this.x = canvas.width; this.vx *= -1; }
             if (this.y < 0) { this.y = 0; this.vy *= -1; }
@@ -295,4 +292,296 @@
 
         draw(ctx) {
             ctx.font = "30px Arial";
-            ctx
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(this.emoji, this.x, this.y);
+        }
+    }
+
+    class Particle {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = (Math.random() - 0.5) * 10;
+            this.life = 1.0;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.life -= 0.05;
+        }
+        draw(ctx) {
+            // FIXED: Prevent negative alpha crashing the render loop
+            let alpha = Math.max(0, this.life); 
+            ctx.fillStyle = `rgba(247, 244, 237, ${alpha})`;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function spawnBugs(count, isWasp = false) {
+        for(let i=0; i<count; i++) {
+            bugs.push(new Bug(isWasp));
+        }
+    }
+
+    function createZap(x, y) {
+        for(let i=0; i<15; i++) {
+            particles.push(new Particle(x, y));
+        }
+    }
+
+    function triggerPenalty(type) {
+        const container = document.getElementById('gameContainer');
+        container.style.boxShadow = "0 0 50px rgba(255, 0, 0, 1)";
+        setTimeout(() => { container.style.boxShadow = "0 0 30px rgba(18, 59, 104, 0.8)"; }, 400);
+
+        const popupLayer = document.getElementById('popupLayer');
+        popupLayer.classList.remove('hidden');
+
+        if (type === 'CAT') {
+            score = Math.max(0, score - 3); 
+            showPenaltyImage('popupFly');
+        } else if (type === 'NANA') {
+            score = Math.max(0, score - 10);
+            showPenaltyImage('popupNana');
+        }
+        updateHUD();
+    }
+
+    function showPenaltyImage(imgId) {
+        const img = document.getElementById(imgId);
+        img.classList.remove('hidden');
+        
+        setTimeout(() => { img.classList.add('show-penalty'); }, 10);
+
+        setTimeout(() => {
+            img.classList.remove('show-penalty');
+            setTimeout(() => {
+                img.classList.add('hidden');
+                document.getElementById('popupLayer').classList.add('hidden');
+            }, 400); 
+        }, 1500); 
+    }
+
+    function handleSwat() {
+        if (gameState !== 'MAIN') return;
+        
+        createZap(mouseX, mouseY);
+
+        // Check Special Entities First
+        for (let i = specialEntities.length - 1; i >= 0; i--) {
+            let entity = specialEntities[i];
+            let dx = mouseX - entity.x;
+            let dy = mouseY - entity.y;
+            if (Math.sqrt(dx*dx + dy*dy) < entity.radius * 2) {
+                specialEntities.splice(i, 1);
+            }
+        }
+
+        // Check Bugs
+        for (let i = bugs.length - 1; i >= 0; i--) {
+            let b = bugs[i];
+            let dx = mouseX - b.x;
+            let dy = mouseY - b.y;
+            if (Math.sqrt(dx*dx + dy*dy) < b.radius * 2.5) {
+                bugs.splice(i, 1);
+                score += 1;
+                swatCount += 1;
+                updateHUD();
+                
+                if (swatCount >= 30) {
+                    timer += 20;
+                    swatCount = 0;
+                    showRechargeEffect();
+                    updateHUD();
+                }
+            }
+        }
+    }
+
+    function showRechargeEffect() {
+        const ui = document.getElementById('uiLayer');
+        const msg = document.createElement('h2');
+        msg.innerText = "☀️ SOLAR RECHARGE! +20s ☀️";
+        msg.style.position = 'absolute';
+        msg.style.color = '#F7F4ED';
+        msg.style.textShadow = '2px 2px #123B68';
+        msg.style.animation = 'floatUp 2s forwards';
+        
+        if (!document.getElementById('animStyles')) {
+            const style = document.createElement('style');
+            style.id = 'animStyles';
+            style.innerHTML = `@keyframes floatUp { 0% { top: 50%; opacity: 1; transform: scale(1); } 100% { top: 30%; opacity: 0; transform: scale(1.5); } }`;
+            document.head.appendChild(style);
+        }
+        
+        ui.appendChild(msg);
+        setTimeout(() => msg.remove(), 2000);
+    }
+
+    function updateHUD() {
+        document.getElementById('scoreDisplay').innerText = `Score: ${score}`;
+        document.getElementById('rechargeDisplay').innerText = `Recharge: ${swatCount}/30`;
+        document.getElementById('timeDisplay').innerText = `Battery: ${timer}s`;
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        
+        score = 0;
+        timer = 60;
+        swatCount = 0;
+        catTimer = 0;
+        nanaTimer = 0;
+        
+        bugs = [];
+        particles = [];
+        specialEntities = [];
+        gameState = 'MAIN';
+        
+        spawnBugs(25, false);
+        updateHUD();
+
+        if(gameInterval) clearInterval(gameInterval);
+        gameInterval = setInterval(gameTimerTick, 1000);
+        
+        requestAnimationFrame(gameLoop);
+    }
+
+    function gameTimerTick() {
+        if (gameState === 'MAIN') {
+            timer--;
+            catTimer++;
+            nanaTimer++;
+
+            // Adjusted Spawn Timers for higher frequency
+            if (catTimer >= 8) {
+                specialEntities.push(new SpecialEntity('CAT'));
+                catTimer = 0;
+            }
+
+            if (nanaTimer >= 12) {
+                specialEntities.push(new SpecialEntity('NANA'));
+                nanaTimer = 0;
+            }
+
+            updateHUD();
+            
+            if (timer <= 0) {
+                gameState = 'BONUS_TRANSITION';
+                document.getElementById('bonusScreen').classList.remove('hidden');
+                document.getElementById('hud').classList.add('hidden');
+            }
+        } else if (gameState === 'BONUS') {
+            timer--;
+            document.getElementById('timeDisplay').innerText = `Time: ${timer}s`;
+            if (timer <= 0) {
+                endGame();
+            }
+        }
+    }
+
+    function startBonusRound() {
+        document.getElementById('bonusScreen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('rechargeDisplay').classList.add('hidden'); 
+        
+        gameState = 'BONUS';
+        timer = 15;
+        bugs = []; 
+        specialEntities = []; 
+        spawnBugs(20, true); 
+        updateHUD();
+    }
+
+    function endGame() {
+        gameState = 'OVER';
+        clearInterval(gameInterval);
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('rechargeDisplay').classList.remove('hidden'); 
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('finalScore').innerText = `Total Score: ${score}`;
+    }
+
+    function resetToStart() {
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        document.getElementById('startScreen').classList.remove('hidden');
+    }
+
+    function gameLoop(timestamp) {
+        if (gameState === 'OVER') return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameState === 'MAIN') {
+            if (bugs.length < 25) {
+                spawnBugs(25 - bugs.length, false);
+            }
+
+            // Draw bugs first so they appear UNDER the special entities
+            bugs.forEach(bug => {
+                bug.update();
+                bug.draw(ctx);
+            });
+
+            // Update & Draw Special Entities
+            for (let i = specialEntities.length - 1; i >= 0; i--) {
+                let entity = specialEntities[i];
+                entity.update();
+                entity.draw(ctx);
+
+                if (entity.type === 'CAT' && entity.x > canvas.width + entity.radius) {
+                    triggerPenalty('CAT');
+                    specialEntities.splice(i, 1);
+                } else if (entity.type === 'NANA' && entity.y > canvas.height + entity.radius) {
+                    triggerPenalty('NANA');
+                    specialEntities.splice(i, 1);
+                }
+            }
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.update();
+                p.draw(ctx);
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        } 
+        else if (gameState === 'BONUS') {
+            ctx.fillStyle = "rgba(18, 59, 104, 0.4)";
+            ctx.beginPath();
+            ctx.arc(catcher.x, catcher.y, catcher.radius + 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.font = "80px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("🏺", catcher.x, catcher.y);
+
+            ctx.font = "50px Arial";
+            ctx.fillText("👴", papa.x, papa.y);
+
+            for (let i = bugs.length - 1; i >= 0; i--) {
+                let b = bugs[i];
+                b.update();
+                b.draw(ctx);
+
+                let dx = b.x - catcher.x;
+                let dy = b.y - catcher.y;
+                if (Math.sqrt(dx*dx + dy*dy) < catcher.radius) {
+                    bugs.splice(i, 1);
+                    score += 3; 
+                    document.getElementById('scoreDisplay').innerText = `Score: ${score}`;
+                }
+            }
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+
+</body>
+</html>
